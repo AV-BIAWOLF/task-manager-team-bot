@@ -1,0 +1,6 @@
+venv
+.idea
+task_bot.session
+tasks.json
+__pycache__
+pytest.cache
