@@ -4,3 +4,4 @@ task_bot.session
 tasks.json
 __pycache__
 pytest.cache
+task_bot.session-journal

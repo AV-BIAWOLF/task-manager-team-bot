@@ -16,6 +16,9 @@ app = Client(
 # Dictionary to store tasks
 tasks = {}
 
+# Dictionary for tracking users waiting for task input
+awaiting_tasks = {}
+
 # Helper function to save tasks to a file (optional for persistence)
 def save_tasks():
     with open("tasks.json", "w") as file:
@@ -42,42 +45,83 @@ async def start_bot(client, message: Message):
     await message.reply("Hello! I'm here to help manage your tasks. Use /newtask to create a task or press button "
                         "'New task':", reply_markup=InlineKeyboardMarkup(buttons))
 
+# Command to create a new task directly
+# @app.on_message(filters.command("newtask") & filters.group)
+# async def new_task_command(client, message: Message):
+#     print(f"new_task_command")
+#     awaiting_tasks[message.from_user.id] = message.chat.id
+#     await message.reply("Please enter the task name and description in the format: `Task Name - Task Description`")
+
 @app.on_callback_query()
 async def handle_callback_query(client: Client, query: CallbackQuery):
+    chat_id = str(query.message.chat.id)
     if query.data == "newtask":
-        await query.message.reply("Please use the format: `/newtask Task Name - Task Description`")
+        print(f"handle_callback_query")
+        awaiting_tasks[query.from_user.id] = chat_id  # Сохраняем пользователя в режиме ожидания задачи
+        print(awaiting_tasks)
+        await query.message.reply("Please enter the task name and description in the format: `Task Name - Task Description`")
     elif query.data == "listtasks":
-        # await query.message.reply("Use noramal format")
         await list_tasks(client, query.message)
 
 
-# Command: Create a new task
-@app.on_message(filters.command("newtask") & filters.group)
-async def new_task(client, message: Message):
+
+# Базовый обработчик для всех команд
+# @app.on_message()
+# async def catch_all_messages(client, message: Message):
+#     print(f"Catch-all received a message from {message.from_user.id} in chat {message.chat.id}: {message.text}")
+
+
+
+
+@app.on_message(filters.text & filters.group)
+# @app.on_message()
+async def handle_task_input(client, message: Message):
+    print(f"efepfmwefn")
+    print(message.text)
+    user_id = message.from_user.id
     chat_id = str(message.chat.id)
-    task_data = message.text.split(" ", 2)
 
-    if len(task_data) < 3:
-        await message.reply("Please use the format: `/newtask Task Name - Task Description`")
-        return
+    print(f"handle_task_input called for user {user_id} in chat {chat_id} with message: {message.text}")
+    print()
+    print(f"awaiting_tasks: {awaiting_tasks}")
+    print(f"user_id: {user_id}")
+    print(f"chat_id: {chat_id}")
+    # Проверяем, находится ли пользователь в режиме ожидания задачи
+    if user_id in awaiting_tasks and awaiting_tasks[user_id] == chat_id:
+        print(f"Handling task input for user {user_id} in chat {chat_id}: {message.text}")
 
-    task_name = task_data[1]
-    task_description = task_data[2]
+        print('fall!')
+        task_data = message.text.split(" - ", 1)
 
-    if chat_id not in tasks:
-        tasks[chat_id] = []
+        print(task_data)
 
-    task = {
-        "name": task_name,
-        "description": task_description,
-        "status": "waiting",
-        "assigned_to": None
-    }
+        # Добавим логирование для отладки
+        if len(task_data) < 2:
+            await message.reply("Please use the format: `Task Name - Task Description`")
+            return
 
-    tasks[chat_id].append(task)
-    save_tasks()
-    await message.reply(f"Task '{task_name}' has been created.")
+        task_name, task_description = task_data
+        if chat_id not in tasks:
+            tasks[chat_id] = []
 
+        task = {
+            "name": task_name.strip(),
+            "description": task_description.strip(),
+            "status": "waiting",
+            "assigned_to": None
+        }
+        tasks[chat_id].append(task)
+        save_tasks()
+
+        await message.reply(f"Task '{task_name}' has been created.")
+        print(f"Task '{task_name}' has been created for user {user_id}")
+
+        # Удаление пользователя из режима ожидания
+        del awaiting_tasks[user_id]
+        print(f"User {user_id} removed from awaiting_tasks after task creation")
+
+
+#
 # Command: Assign a task to a user
 @app.on_message(filters.command("assigntask") & filters.group)
 async def assign_task(client, message: Message):
@@ -99,7 +143,6 @@ async def assign_task(client, message: Message):
             return
 
     await message.reply(f"No task found with the name '{task_name}'.")
-
 
 
 # Command: List all tasks
