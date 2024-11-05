@@ -19,6 +19,13 @@ tasks = {}
 # Dictionary for tracking users waiting for task input
 awaiting_tasks = {}
 
+bot_messages = {}
+
+# Function to delete previous message from the bot
+async def delete_bot_messages(client, chat_id, message_ids):
+    await client.delete_messages(chat_id, message_ids)
+
+
 # Helper function to save tasks to a file (optional for persistence)
 def save_tasks():
     with open("tasks.json", "w") as file:
@@ -38,12 +45,19 @@ load_tasks()
 # Command: Start the bot (bot must be added to a group chat first)
 @app.on_message(filters.command("start") & filters.group)
 async def start_bot(client, message: Message):
+    chat_id = str(message.chat.id)
     buttons = [
         [InlineKeyboardButton("New task", callback_data="newtask")],
-        [InlineKeyboardButton("Task list", callback_data="listtasks")]
+        [InlineKeyboardButton("Task list", callback_data="listtasks")],
+        [InlineKeyboardButton("Back", callback_data="back")]
     ]
-    await message.reply("Hello! I'm here to help manage your tasks. Use /newtask to create a task or press button "
-                        "'New task':", reply_markup=InlineKeyboardMarkup(buttons))
+    # await message.reply("Hello! I'm here to help manage your tasks. Use /newtask to create a task or press button "
+    #                     "'New task':", reply_markup=InlineKeyboardMarkup(buttons))
+    if chat_id in bot_messages:
+        await delete_bot_messages(client, chat_id, bot_messages[chat_id])
+    sent_message = await message.reply("Hello! I'm here to help manage your tasks. Use /newtask to create a task or "
+                                       "press button 'New task':", reply_markup=InlineKeyboardMarkup(buttons))
+    bot_messages[chat_id] = [sent_message.id]
 
 # Command to create a new task directly
 # @app.on_message(filters.command("newtask") & filters.group)
@@ -52,16 +66,31 @@ async def start_bot(client, message: Message):
 #     awaiting_tasks[message.from_user.id] = message.chat.id
 #     await message.reply("Please enter the task name and description in the format: `Task Name - Task Description`")
 
+#handles events related to inline buttons
 @app.on_callback_query()
 async def handle_callback_query(client: Client, query: CallbackQuery):
     chat_id = str(query.message.chat.id)
     if query.data == "newtask":
+        if chat_id in bot_messages:
+            await delete_bot_messages(client, chat_id, bot_messages[chat_id])
         print(f"handle_callback_query")
         awaiting_tasks[query.from_user.id] = chat_id  # Сохраняем пользователя в режиме ожидания задачи
         print(awaiting_tasks)
-        await query.message.reply("Please enter the task name and description in the format: `Task Name - Task Description`")
+        sent_message = await query.message.reply("Please enter the task name and description in the format: `Task Name "
+                                               "- Task Description`")
+        bot_messages[chat_id] = [sent_message.id]
     elif query.data == "listtasks":
         await list_tasks(client, query.message)
+        if chat_id in bot_messages:
+            await delete_bot_messages(client, chat_id, bot_messages[chat_id])
+    # elif query.data == "back":
+    #     buttons = [
+    #         [InlineKeyboardButton("New task", callback_data="newtask")],
+    #         [InlineKeyboardButton("Task list", callback_data="listtasks")],
+    #         [InlineKeyboardButton("Back", callback_data="back")]
+    #     ]
+
+
 
 
 
@@ -69,7 +98,6 @@ async def handle_callback_query(client: Client, query: CallbackQuery):
 # @app.on_message()
 # async def catch_all_messages(client, message: Message):
 #     print(f"Catch-all received a message from {message.from_user.id} in chat {message.chat.id}: {message.text}")
-
 
 
 
@@ -96,9 +124,14 @@ async def handle_task_input(client, message: Message):
         print(task_data)
 
         # Добавим логирование для отладки
-        if len(task_data) < 2:
-            await message.reply("Please use the format: `Task Name - Task Description`")
-            return
+        # if len(task_data) < 2:
+            # await message.reply("Please use the format: `Task Name - Task Description`")
+            # sent_message = await message.reply("Please use the format: `Task Name - Task Description`")
+            # bot_messages[chat_id] = [sent_message.id]
+            # await delete_bot_messages(client, chat_id, [message.message_id])
+            # if chat_id in bot_messages:
+            #     await delete_bot_messages(client, chat_id, bot_messages[chat_id])
+            # return
 
         task_name, task_description = task_data
         if chat_id not in tasks:
@@ -113,8 +146,16 @@ async def handle_task_input(client, message: Message):
         tasks[chat_id].append(task)
         save_tasks()
 
-        await message.reply(f"Task '{task_name}' has been created.")
+        # await message.reply(f"Task '{task_name}' has been created.")
         print(f"Task '{task_name}' has been created for user {user_id}")
+
+        if chat_id in bot_messages:
+            await delete_bot_messages(client, chat_id, bot_messages[chat_id])
+
+        sent_message = await message.reply(f"Task '{task_name}' has been created.")
+        bot_messages[chat_id] = [sent_message.id]
+        # if chat_id in bot_messages:
+        #     await delete_bot_messages(client, chat_id, bot_messages[chat_id])
 
         # Удаление пользователя из режима ожидания
         del awaiting_tasks[user_id]
@@ -160,6 +201,7 @@ async def list_tasks(client, message: Message):
         if task["assigned_to"]:
             task_list += f"  Assigned to: {task['assigned_to']}\n"
 
+    print(f"bot_messages: {bot_messages}")
     await message.reply(task_list)
 
 # Command: Change task status
